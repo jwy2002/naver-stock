@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주식 시세 대시보드</title>
+    <!-- Chart.js 라이브러리 추가 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS 라이브러리 추가 (엑셀 다운로드용) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --text-muted: #888;
+            --border-color: #333;
+            --primary-color: #bb86fc;
+            --accent-color: #03dac6;
+            --danger-color: #cf6679;
+            --hover-bg: #2d2d2d;
+        }
+
+        .btn-excel {
+            background-color: var(--primary-color);
+            color: #fff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 10px;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        .btn-excel:hover {
+            opacity: 0.8;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 좌측 사이드바 (종목 리스트) */
+        .sidebar {
+            width: 320px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background-color: var(--panel-bg);
+            z-index: 10;
+        }
+
+        .stock-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .stock-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stock-item:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .stock-item.active {
+            border-left: 4px solid var(--primary-color);
+            background-color: var(--hover-bg);
+        }
+
+        .stock-name-wrap {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stock-name {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .stock-code {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .stock-price {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        /* 우측 메인 대시보드 (상세 분석 및 차트) */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .header p {
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+
+        /* 요약 카드 영역 */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .card-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .card-subtext {
+            font-size: 0.8rem;
+            color: var(--accent-color);
+            margin-top: 8px;
+        }
+
+        /* 27종 상세 지표 영역 */
+        .detail-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .detail-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 15px;
+        }
+
+        .detail-item {
+            background-color: var(--panel-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .detail-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .detail-value {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        /* 차트 영역 */
+        .chart-container {
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            height: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 유틸 및 알림창 */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .error-msg {
+            background-color: rgba(207, 102, 121, 0.1);
+            color: var(--danger-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 1px solid var(--danger-color);
+            display: none;
+        }
+
+        /* 유틸리티 색상 */
+        .text-up {
+            color: var(--danger-color);
+        }
+
+        /* 주식에서는 한국식으로 상승을 붉은색에 가깝게 하기도 함, 여기선 테마에 맞춰 변경 */
+        .text-down {
+            color: #82b1ff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 좌측 상위 50위 종목 리스트 -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            시가총액 대시보드
+            <div style="font-size: 0.8rem; font-weight: normal; color: #888; margin-top: 5px;">KOSPI Top 50</div>
+            <button class="btn-excel" onclick="downloadExcel()">📥 엑셀 다운로드</button>
+        </div>
+        <ul class="stock-list" id="stockList">
+            <!-- 자바스크립트로 리스트 삽입 -->
+        </ul>
+    </div>
+
+    <!-- 우측 상세 대시보드 -->
+    <div class="main-content" id="mainContent">
+        <div class="empty-state" id="emptyState">
+            <svg viewBox="0 0 24 24" width="64" height="64" stroke="currentColor" stroke-width="2" fill="none"
+                stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 20px; opacity: 0.5;">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            <h2>종목을 선택해주시옵소서</h2>
+            <p>좌측 목록에서 종목을 클릭하시면 상세 일봉 차트와 분석 지표가 나타나옵니다.<br>(단, 상세 JSON 파일이 생성된 종목만 조회 가능)</p>
+        </div>
+
+        <div id="dashboardContainer" style="display: none;">
+            <div class="header">
+                <h1 id="detailStockName">SK하이닉스 (000660)</h1>
+                <p id="detailPeriod">데이터 기간: - </p>
+            </div>
+
+            <div id="errorAlert" class="error-msg">
+                상세 데이터 파일을 찾을 수 없사옵니다. 해당 종목코드의 JSON 파이썬 스크립트(stock_detail.py)를 먼저 실행하여 주시옵소서!
+            </div>
+
+            <div class="summary-cards" id="summaryCards">
+                <!-- 요약 결과 카드 -->
+                <div class="card">
+                    <div class="card-title">역대 최고가</div>
+                    <div class="card-value text-up" id="valMaxPrice">-</div>
+                    <div class="card-subtext" id="subMaxPrice">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">역대 최저가</div>
+                    <div class="card-value text-down" id="valMinPrice">-</div>
+                    <div class="card-subtext" id="subMinPrice">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">최대 거래량 발생일</div>
+                    <div class="card-value" id="valMaxVol">-</div>
+                    <div class="card-subtext" id="subMaxVol">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">외국인 보유 비중 추세</div>
+                    <div class="card-value" id="valFrgn">-</div>
+                    <div class="card-subtext" id="subFrgn">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">일일 최대 변동폭 (고-저)</div>
+                    <div class="card-value text-up" id="valMaxGap">-</div>
+                    <div class="card-subtext" id="subMaxGap">-</div>
+                </div>
+            </div>
+
+            <div class="analysis-briefing" id="analysisBriefing"
+                style="display: none; background: var(--panel-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--accent-color); margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <h3 style="color: var(--accent-color); margin-top: 0; margin-bottom: 15px;">📊 AI 심층 분석 요약</h3>
+                <div id="briefingContent" style="line-height: 1.6; color: #eee; font-size: 0.95rem;"></div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="stockChart"></canvas>
+            </div>
+
+            <div class="detail-section" id="detailSection" style="display: none;">
+                <h2>종목 상세 시장/재무 지표 (27종)</h2>
+                <div class="detail-grid" id="detailGrid">
+                    <!-- 자바스크립트로 상세 데이터 삽입 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let stockChartInstance = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStockMarketList();
+        });
+
+        // 1. 파이썬 백엔드(app.py) API를 찔러 실시간 KOSPI Top 50 리스트 가져오기
+        async function fetchStockMarketList() {
+            try {
+                // 로딩 메시지 표력
+                document.getElementById('stockList').innerHTML = '<li style="padding: 20px; text-align:center; color: var(--accent-color);">실시간 네이버 증권 데이터를<br>열심히 긁어오고 있사옵니다...<br><span style="font-size:0.8rem; color:#888;">(서버 연동, 약 3초 소요)</span></li>';
+
+                // 파이썬 백엔드가 띄워진 5000번 포트로 명시적 접근
+                const response = await fetch('http://127.0.0.1:5000/api/market');
+                if (!response.ok) throw new Error('Network response was not ok');
+                const stocks = await response.json();
+                window.allStocksData = stocks; // 다운로드를 위해 전역 변수 저장
+                renderStockList(stocks);
+            } catch (error) {
+                console.error('Failed to fetch stock list:', error);
+                document.getElementById('stockList').innerHTML = `<li style="padding: 20px; color: var(--danger-color);">실시간 API 연결 실패. (가벼운 파이썬 서버 app.py를 먼저 실행해주시옵소서)</li>`;
+            }
+        }
+
+        // 2. 좌측 리스트 렌더링
+        function renderStockList(stocks) {
+            const listEl = document.getElementById('stockList');
+            listEl.innerHTML = ''; // 초기화
+
+            stocks.forEach(stock => {
+                const li = document.createElement('li');
+                li.className = 'stock-item';
+                // 종목 객체를 통째로 넘김
+                li.onclick = () => loadStockDetail(stock, li);
+
+                // 화면에 나타낼 내용
+                const currentPrice = stock['현재가'] ? stock['현재가'].toLocaleString() + '원' : '-';
+
+                li.innerHTML = `
+                    <div class="stock-name-wrap">
+                        <span class="stock-name">${stock.rank}. ${stock.name}</span>
+                        <span class="stock-code">${stock.code}</span>
+                    </div>
+                    <div class="stock-price">${currentPrice}</div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        // 3. 우측 상세 화면 로드 (클릭 이벤트)
+        async function loadStockDetail(stock, element) {
+            const code = stock.code;
+            const name = stock.name;
+
+            // UI 상태 변경 (Active 표시)
+            document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            // 화면 전환
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('dashboardContainer').style.display = 'block';
+            document.getElementById('errorAlert').style.display = 'none';
+            document.getElementById('summaryCards').style.display = 'none';
+            document.querySelector('.chart-container').style.display = 'none';
+            document.getElementById('detailSection').style.display = 'none';
+            document.getElementById('analysisBriefing').style.display = 'none'; // 추가된 부분
+
+            document.getElementById('detailStockName').innerText = `${name} (${code})`;
+            document.getElementById('detailPeriod').innerText = "데이터 불러오는 중...";
+
+            try {
+                // 쌩 JSON(파일) 대신, 로컬 파이썬 서버(5000번 포트)에게 종목의 모바일 API 데이터 조회를 다이렉트로 위임합니다.
+                const response = await fetch(`http://127.0.0.1:5000/api/detail/${code}`);
+                if (!response.ok) {
+                    throw new Error(`API fetch error for code ${code}`);
+                }
+
+                const data = await response.json();
+                const priceInfos = data.priceInfos;
+
+                if (!priceInfos || priceInfos.length === 0) {
+                    throw new Error('No price data array.');
+                }
+
+                // 분석 로직 및 차트 렌더링
+                renderDashboardMetrics(priceInfos);
+                renderChart(priceInfos, name);
+                renderDetailGrid(stock);
+
+                // UI 보이기
+                document.getElementById('summaryCards').style.display = 'grid';
+                document.querySelector('.chart-container').style.display = 'block';
+                document.getElementById('detailSection').style.display = 'block';
+                document.getElementById('analysisBriefing').style.display = 'block'; // 추가된 부분
+
+            } catch (error) {
+                console.error('Fetch detail error:', error);
+                // 파일이 없을 경우 에러창 띄우기
+                document.getElementById('detailPeriod').innerText = "조회 불가";
+                document.getElementById('errorAlert').style.display = 'block';
+            }
+        }
+
+        // 4. 상단 요약 카드 데이터 계산 및 텍스트 채우기
+        function renderDashboardMetrics(infos) {
+            const periods = `${infos[0].localDate} ~ ${infos[infos.length - 1].localDate}`;
+            document.getElementById('detailPeriod').innerText = `총 ${infos.length} 거래일 (${periods})`;
+
+            // 요약 계산 (파이썬 로직을 JS 리듀스로 옮김)
+            let maxClose = infos[0], minClose = infos[0], maxVol = infos[0], maxGap = infos[0];
+
+            infos.forEach(i => {
+                if (i.closePrice > maxClose.closePrice) maxClose = i;
+                if (i.closePrice < minClose.closePrice) minClose = i;
+                if (i.accumulatedTradingVolume > maxVol.accumulatedTradingVolume) maxVol = i;
+                if ((i.highPrice - i.lowPrice) > (maxGap.highPrice - maxGap.lowPrice)) maxGap = i;
+            });
+
+            // 포맷팅 헬퍼
+            const fmtNum = num => num.toLocaleString();
+
+            // DOM 적용
+            document.getElementById('valMaxPrice').innerText = fmtNum(maxClose.closePrice) + '원';
+            document.getElementById('subMaxPrice').innerText = `달성일: ${maxClose.localDate}`;
+
+            document.getElementById('valMinPrice').innerText = fmtNum(minClose.closePrice) + '원';
+            document.getElementById('subMinPrice').innerText = `기록일: ${minClose.localDate}`;
+
+            document.getElementById('valMaxVol').innerText = fmtNum(maxVol.accumulatedTradingVolume) + '주';
+            document.getElementById('subMaxVol').innerText = `발생일: ${maxVol.localDate} / 종가: ${fmtNum(maxVol.closePrice)}`;
+
+            const startFrgn = infos[0].foreignRetentionRate;
+            const endFrgn = infos[infos.length - 1].foreignRetentionRate;
+            const diffFrgn = (endFrgn - startFrgn).toFixed(2);
+
+            document.getElementById('valFrgn').innerText = `${endFrgn}%`;
+            if (diffFrgn > 0) {
+                document.getElementById('subFrgn').innerHTML = `시초(${startFrgn}%) 대비 <span style="color:var(--danger-color)">+${diffFrgn}%p 상승</span>`;
+            } else {
+                document.getElementById('subFrgn').innerHTML = `시초(${startFrgn}%) 대비 <span style="color:#82b1ff">${diffFrgn}%p 하락</span>`;
+            }
+
+            // 최대 가격 변동폭 출력
+            const gapAmt = maxGap.highPrice - maxGap.lowPrice;
+            document.getElementById('valMaxGap').innerText = fmtNum(gapAmt) + '원';
+            document.getElementById('subMaxGap').innerText = `${maxGap.localDate} (고: ${fmtNum(maxGap.highPrice)} / 저: ${fmtNum(maxGap.lowPrice)})`;
+
+            // 파이썬 콘솔의 감성(analysis_detail.py)을 그대로 재현한 텍스트 리포트 생성
+            let trendText = diffFrgn > 0 ? `<span style="color:var(--danger-color)">순매수 상승세(+)</span>` : `<span style="color:#82b1ff">순매도 하락세(-)</span>`;
+            const startD = infos[0].localDate;
+            const endD = infos[infos.length - 1].localDate;
+
+            const briefingHTML = `
+                <p style="margin-top: 0;">총 거래일 수: <strong>${infos.length}일</strong> (조회 기간: ${startD} ~ ${endD})</p>
+                <ul style="padding-left: 20px; margin-top: 10px; list-style-type: none;">
+                    <li style="margin-bottom: 8px;">📈 <strong>역대 최고 종가:</strong> ${fmtNum(maxClose.closePrice)}원 (달성일: ${maxClose.localDate})</li>
+                    <li style="margin-bottom: 8px;">📉 <strong>역대 최저 종가:</strong> ${fmtNum(minClose.closePrice)}원 (기록일: ${minClose.localDate})</li>
+                    <li style="margin-bottom: 8px;">🔥 <strong>거래량 최대일:</strong> ${maxVol.localDate} (총 ${fmtNum(maxVol.accumulatedTradingVolume)}주 거래, 당일 종가: ${fmtNum(maxVol.closePrice)}원)</li>
+                    <li style="margin-bottom: 8px;">🌍 <strong>외국인 보유 비중 변화:</strong> 시작일(${startFrgn}%) ➔ 최근일(${endFrgn}%) <br>
+                        &nbsp;&nbsp;&nbsp;➔ 외국계 자본 비중이 ${Math.abs(diffFrgn)}%p 변화하여 <strong>${trendText}</strong>를 띠고 있사옵니다.
+                    </li>
+                    <li style="margin-bottom: 8px;">🎢 <strong>일일 가격 변동폭 최대일:</strong> ${maxGap.localDate} <br>
+                        &nbsp;&nbsp;&nbsp;➔ 당시 가격 변동폭 격차: ${fmtNum(gapAmt)}원 (고가 ${fmtNum(maxGap.highPrice)}원 / 저가 ${fmtNum(maxGap.lowPrice)}원)
+                    </li>
+                </ul>
+            `;
+            document.getElementById('briefingContent').innerHTML = briefingHTML;
+            document.getElementById('analysisBriefing').style.display = 'block';
+        }
+
+        // 5. 종목 상세 지표(하단 바둑판) 순서 고정 렌더링
+        function renderDetailGrid(stock) {
+            const grid = document.getElementById('detailGrid');
+            grid.innerHTML = '';
+
+            // 사용자가 명시한 31개 지표의 표출 순서 정보
+            const detailLabels = [
+                { key: "현재가", label: "현재가" },
+                { key: "전일비", label: "전일비" },
+                { key: "등락률", label: "등락률" },
+                { key: "액면가", label: "액면가" },
+                { key: "거래량", label: "거래량" },
+                { key: "시가", label: "시가" },
+                { key: "고가", label: "고가" },
+                { key: "저가", label: "저가" },
+                { key: "매수호가", label: "매수호가" },
+                { key: "매도호가", label: "매도호가" },
+                { key: "매수총잔량", label: "매수총잔량" },
+                { key: "매도총잔량", label: "매도총잔량" },
+                { key: "거래대금", label: "거래대금(백만)" },
+                { key: "전일거래량", label: "전일거래량" },
+                { key: "외국인비율", label: "외국인비율" },
+                { key: "상장주식수", label: "상장주식수(천주)" },
+                { key: "시가총액", label: "시가총액(억)" },
+                { key: "자산총계", label: "자산총계(억)" },
+                { key: "부채총계", label: "부채총계(억)" },
+                { key: "매출액", label: "매출액(억)" },
+                { key: "매출액증가율", label: "매출액증가율" },
+                { key: "영업이익", label: "영업이익(억)" },
+                { key: "영업이익증가율", label: "영업이익증가율" },
+                { key: "당기순이익", label: "당기순이익(억)" },
+                { key: "주당순이익", label: "주당순이익(원)" },
+                { key: "보통주배당금", label: "보통주배당금(원)" },
+                { key: "PER", label: "PER(배)" },
+                { key: "ROE", label: "ROE(%)" },
+                { key: "ROA", label: "ROA(%)" },
+                { key: "PBR", label: "PBR(배)" },
+                { key: "유보율", label: "유보율(%)" }
+            ];
+
+            detailLabels.forEach(item => {
+                let value = stock[item.key];
+                let valStr = value;
+
+                // 천단위 콤마 및 소수점 자리수 처리
+                if (typeof value === 'number') {
+                    if (item.label.includes('(%)') || item.label.includes('(배)') || item.label.includes('증가율') || item.label.includes('률') || item.label.includes('비율')) {
+                        valStr = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        if (item.label.includes('(%)') || item.label.includes('증가율') || item.label.includes('비율') || item.label.includes('률')) valStr += '%';
+                        else valStr += '배';
+                    } else {
+                        valStr = value.toLocaleString();
+                    }
+                } else if (value === undefined || value === null || value === 'N/A') {
+                    valStr = '-';
+                }
+
+                grid.innerHTML += `
+                    <div class="detail-item">
+                        <div class="detail-label">${item.label}</div>
+                        <div class="detail-value">${valStr}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // 6. Chart.js 캔버스 렌더링
+        function renderChart(infos, name) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+
+            // 기존에 그려진 차트가 있다면(종목 변경 시) 파괴하고 새로 그림
+            if (stockChartInstance) {
+                stockChartInstance.destroy();
+            }
+
+            // X축 (날짜), Y축 (종가) 데이터 분리
+            const labels = infos.map(i => {
+                const d = i.localDate;
+                // 날짜 포맷 (YYYYMMDD -> MM.DD)
+                return `${d.substring(4, 6)}.${d.substring(6, 8)}`;
+            });
+            const closePrices = infos.map(i => i.closePrice);
+
+            // 주가 상승/하락에 따른 그라데이션 만들기 (최근 가격 비교)
+            let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(187, 134, 252, 0.5)'); // primary-color 투명도
+            gradient.addColorStop(1, 'rgba(187, 134, 252, 0)');
+
+            stockChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `${name} 종가 흐름`,
+                        data: closePrices,
+                        borderColor: '#bb86fc', // primary-color
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 1, // 마우스 올리기 전 점 크기 작게
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.1 // 살짝 곡선으로
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            callbacks: {
+                                label: function (context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('ko-KR').format(context.parsed.y) + '원';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#888',
+                                maxTicksLimit: 15 // 레이블이 너무 많으면 겹치므로 최대 개수 제한
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.05)'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#888',
+                                callback: function (value) {
+                                    return new Intl.NumberFormat('ko-KR').format(value);
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.05)'
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // 7. 엑셀 다운로드 기능 (SheetJS)
+        function downloadExcel() {
+            if (!window.allStocksData || window.allStocksData.length === 0) {
+                alert('데이터가 아직 로드되지 않았사옵니다. 로딩 완료 후 다시 시도해주시옵소서.');
+                return;
+            }
+
+            const excelColumns = [
+                { key: "name", label: "종목명" },
+                { key: "code", label: "종목코드" },
+                { key: "현재가", label: "현재가" },
+                { key: "전일비", label: "전일비" },
+                { key: "등락률", label: "등락률" },
+                { key: "액면가", label: "액면가" },
+                { key: "거래량", label: "거래량" },
+                { key: "시가", label: "시가" },
+                { key: "고가", label: "고가" },
+                { key: "저가", label: "저가" },
+                { key: "매수호가", label: "매수호가" },
+                { key: "매도호가", label: "매도호가" },
+                { key: "매수총잔량", label: "매수총잔량" },
+                { key: "매도총잔량", label: "매도총잔량" },
+                { key: "거래대금", label: "거래대금(백만)" },
+                { key: "전일거래량", label: "전일거래량" },
+                { key: "외국인비율", label: "외국인비율" },
+                { key: "상장주식수", label: "상장주식수(천주)" },
+                { key: "시가총액", label: "시가총액(억)" },
+                { key: "자산총계", label: "자산총계(억)" },
+                { key: "부채총계", label: "부채총계(억)" },
+                { key: "매출액", label: "매출액(억)" },
+                { key: "매출액증가율", label: "매출액증가율" },
+                { key: "영업이익", label: "영업이익(억)" },
+                { key: "영업이익증가율", label: "영업이익증가율" },
+                { key: "당기순이익", label: "당기순이익(억)" },
+                { key: "주당순이익", label: "주당순이익(원)" },
+                { key: "보통주배당금", label: "보통주배당금(원)" },
+                { key: "PER", label: "PER(배)" },
+                { key: "ROE", label: "ROE(%)" },
+                { key: "ROA", label: "ROA(%)" },
+                { key: "PBR", label: "PBR(배)" },
+                { key: "유보율", label: "유보율(%)" }
+            ];
+
+            // 데이터 포맷팅하여 엑셀 형식 배열 구축
+            const excelData = window.allStocksData.map(stock => {
+                let row = {};
+                excelColumns.forEach(col => {
+                    let val = stock[col.key];
+                    row[col.label] = (val !== undefined && val !== null && val !== 'N/A') ? val : '-';
+                });
+                return row;
+            });
+
+            // 셀 너비 최적화를 위해 컬럼 폭 설정 (옵션)
+            const wscols = excelColumns.map(c => ({ wch: 15 }));
+
+            // 시트 생성
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            worksheet['!cols'] = wscols; // 컬럼 너비 적용
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "시가총액(KOSPI Top 50)");
+
+            // 제목에 현 날짜 삽입
+            const d = new Date();
+            const dateStr = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+            XLSX.writeFile(workbook, `KOSPI_대시보드_${dateStr}.xlsx`);
+        }
+    </script>
+</body>
+
+</html>
